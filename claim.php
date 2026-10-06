@@ -43,6 +43,12 @@ else
 	die('Error Accessing Table:  File: '.__FILE__.' : '.__LINE__);
 }
 
+// Active Surfer Rewards - Membership Cash Limits
+// Free members (mtype == 1 in LFMTE) get maximum $0.02 (2 cents) cash claim.
+// Paid / upgraded members (mtype > 1) receive the higher cash amount configured in admin.
+$is_paid_member = (!empty($member_row['mtype']) && intval($member_row['mtype']) > 1);
+$free_member_max_cash = 0.02; // Max cash amount for free members in USD
+
 $today = date("Y-m-d");
 $time = time();
 
@@ -87,7 +93,15 @@ if(($res) && (mysql_num_rows($res) == 1))
 {
 	$asr_row = mysql_fetch_array($res);
 	if($prize=="upgrade") { $amount = $asr_row['upgrade']; }
-	if($prize=="cash") { $amount = $asr_row['cash']; }
+	if($prize=="cash") {
+		// Only paying members get the higher cash amount. Free members get max 2 cents ($0.02).
+		if($is_paid_member) {
+			$amount = $asr_row['cash'];
+		} else {
+			$capped_cash = min($free_member_max_cash, floatval($asr_row['cash']));
+			$amount = ($capped_cash > 0) ? number_format($capped_cash, 2, '.', '') : 0;
+		}
+	}
 	if($prize=="credits") { $amount = $asr_row['credits']; }
 	if($prize=="bannerimps") { $amount = $asr_row['bannerimps']; }
 	if($prize=="textimps") { $amount = $asr_row['textimps']; }
@@ -242,7 +256,7 @@ else
 				}
 				$reward = '1 day '.$accname.' Upgrade';
 			}
-			elseif($prize=="commission") { $reward = '$'.$amount.' USD cash'; }
+			elseif($prize=="commission" || $prize=="cash") { $reward = '$'.$amount.' USD cash'; }
 			elseif($prize=="credits") { $reward = $amount.' Credits'; }
 			elseif($prize=="bannerimps") { $reward = $amount.' Banner Impressions'; }
 			elseif($prize=="textimps") { $reward = $amount.' Text Link Impressions'; }
@@ -285,7 +299,16 @@ if(!$min) {
 				$claim .=  '<option value="upgrade">1-day '.$accname.' Upgrade</option>';
 				}
 
-			if($asr_row['cash']>0) { $claim .=  '<option value="cash">$'.$asr_row['cash'].' USD cash</option>'; }
+			if($asr_row['cash']>0) {
+				if($is_paid_member) {
+					$claim .= '<option value="cash">$'.$asr_row['cash'].' USD cash</option>';
+				} else {
+					$free_cash = min($free_member_max_cash, floatval($asr_row['cash']));
+					if($free_cash > 0) {
+						$claim .= '<option value="cash">$'.number_format($free_cash, 2).' USD cash</option>';
+					}
+				}
+			}
 			if($asr_row['credits']>0) { $claim .=  '<option value="credits">'.$asr_row['credits'].' Credits</option>'; }
 			if($asr_row['bannerimps']>0) { $claim .=  '<option value="bannerimps">'.$asr_row['bannerimps'].' Banner Imps</option>'; }
 			if($asr_row['textimps']>0) { $claim .=  '<option value="textimps">'.$asr_row['textimps'].' Text Link Imps</option>'; }
@@ -343,7 +366,20 @@ if($alreadyclaimed == false)
 			$accname = @mysql_result(mysql_query("SELECT accname FROM {$prefix}membertypes WHERE mtid=".$row['upgrade']),0);
 			$award.= ' or 1 day '.$accname.' Upgrade';
 		}
-		if($row['cash']>0) { $award.=' or $'.$row['cash'].' USD cash'; }
+		if($row['cash']>0) {
+			if($is_paid_member) {
+				$award.=' or $'.$row['cash'].' USD cash';
+			} else {
+				$free_cash = min($free_member_max_cash, floatval($row['cash']));
+				if($free_cash > 0) {
+					if(floatval($row['cash']) > $free_cash) {
+						$award.=' or $'.number_format($free_cash, 2).' USD cash (Paid Members: $'.$row['cash'].')';
+					} else {
+						$award.=' or $'.number_format($free_cash, 2).' USD cash';
+					}
+				}
+			}
+		}
 		if($row['credits']>0) { $award.=' or '.$row['credits'].' Credits'; }
 		if($row['bannerimps']>0) { $award.=' or '.$row['bannerimps'].' Banners'; }
 		if($row['textimps']>0) { $award.=' or '.$row['textimps'].' Text Links'; }
